@@ -611,6 +611,11 @@ function tinyMceService($rootScope, $q, imageHelper, $locale, $http, $timeout, s
       } else {
         editor.selection.setNode(wrapper);
       }
+
+
+      angularHelper.safeApply($rootScope, function () {
+        editor.dispatch("Change");
+      });
     },
 
 
@@ -1051,6 +1056,10 @@ function tinyMceService($rootScope, $q, imageHelper, $locale, $http, $timeout, s
                 editor.undoManager.clear();
               }
             }
+
+            angularHelper.safeApply($rootScope, function () {
+              editor.dispatch("Change");
+            });
           });
       });
 
@@ -1207,10 +1216,9 @@ function tinyMceService($rootScope, $q, imageHelper, $locale, $http, $timeout, s
             target: anchor.attr("target")
           };
 
-          // drop the lead char from the anchor text, if it has a value
           var anchorVal = anchor[0].dataset.anchor;
           if (anchorVal) {
-            currentTarget.anchor = anchorVal.substring(1);
+            currentTarget.anchor = anchorVal;
           }
 
           //locallink detection, we do this here, to avoid poluting the editorService
