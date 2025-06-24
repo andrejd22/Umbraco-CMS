@@ -52,12 +52,8 @@ export class UmbPropertyEditorUIStaticFilePickerElement extends UmbLitElement im
 	@state()
 	private _limitMax: number = Infinity;
 
-	private _onChange(event: CustomEvent) {
-		if (this.#singleItemMode) {
-			this._value = (event.target as UmbInputStaticFileElement).selection[0];
-		} else {
-			this._value = (event.target as UmbInputStaticFileElement).selection;
-		}
+	#onChange(event: CustomEvent & { target: UmbInputStaticFileElement }) {
+		this._value = this.#singleItemMode ? event.target.selection[0] : event.target.selection;
 		this.dispatchEvent(new UmbChangeEvent());
 	}
 
@@ -68,12 +64,16 @@ export class UmbPropertyEditorUIStaticFilePickerElement extends UmbLitElement im
 				.selection=${this._value ? (Array.isArray(this._value) ? this._value : [this._value]) : []}
 				.min=${this._limitMin ?? 0}
 				.max=${this._limitMax ?? Infinity}
-				@change=${this._onChange}></umb-input-static-file>
+				@change=${this.#onChange}>
+			</umb-input-static-file>
 		`;
 	}
 }
 
+/** @deprecated Should be exported as `element` only; to be removed in Umbraco 18. */
 export default UmbPropertyEditorUIStaticFilePickerElement;
+
+export { UmbPropertyEditorUIStaticFilePickerElement as element };
 
 declare global {
 	interface HTMLElementTagNameMap {
