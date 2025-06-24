@@ -1,15 +1,19 @@
 import type { UmbStaticFileItemModel } from '../../repository/item/types.js';
 import { UmbStaticFilePickerInputContext } from './input-static-file.context.js';
-import { css, customElement, html, nothing, property, repeat, state } from '@umbraco-cms/backoffice/external/lit';
+import { css, customElement, html, nothing, property, repeat, state, when } from '@umbraco-cms/backoffice/external/lit';
 import { splitStringToArray } from '@umbraco-cms/backoffice/utils';
+import { umbConfirmModal } from '@umbraco-cms/backoffice/modal';
+import { UmbChangeEvent } from '@umbraco-cms/backoffice/event';
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
-import { UmbServerFilePathUniqueSerializer } from '@umbraco-cms/backoffice/server-file-system';
 import { UmbFormControlMixin } from '@umbraco-cms/backoffice/validation';
+import { UmbServerFilePathUniqueSerializer } from '@umbraco-cms/backoffice/server-file-system';
 
 @customElement('umb-input-static-file')
 export class UmbInputStaticFileElement extends UmbFormControlMixin<string | undefined, typeof UmbLitElement>(
 	UmbLitElement,
 ) {
+	#pickerContext = new UmbStaticFilePickerInputContext(this);
+
 	#serializer = new UmbServerFilePathUniqueSerializer();
 
 	/**
@@ -79,7 +83,8 @@ export class UmbInputStaticFileElement extends UmbFormControlMixin<string | unde
 	@state()
 	private _items?: Array<UmbStaticFileItemModel>;
 
-	#pickerContext = new UmbStaticFilePickerInputContext(this);
+	@state()
+	private _invalidData?: Array<string>;
 
 	constructor() {
 		super();
@@ -98,24 +103,13 @@ export class UmbInputStaticFileElement extends UmbFormControlMixin<string | unde
 
 		this.observe(this.#pickerContext.selection, (selection) => (this.value = selection.join(',')));
 		this.observe(this.#pickerContext.selectedItems, (selectedItems) => (this._items = selectedItems));
+		this.observe(this.#pickerContext.statuses, (statuses) => {
+			this._invalidData = statuses.filter((x) => x.state.type === 'error').map((x) => x.unique);
+		});
 	}
 
 	protected override getFormElement() {
 		return undefined;
-	}
-
-	override render() {
-		if (!this._items) return nothing;
-		return html`
-			<uui-ref-list>
-				${repeat(
-					this._items,
-					(item) => item.unique,
-					(item) => this._renderItem(item),
-				)}
-			</uui-ref-list>
-			${this.#renderAddButton()}
-		`;
 	}
 
 	#openPicker() {
@@ -126,8 +120,29 @@ export class UmbInputStaticFileElement extends UmbFormControlMixin<string | unde
 		});
 	}
 
+	async #onRemoveInvalidData() {
+		await umbConfirmModal(this, {
+			color: 'danger',
+			headline: '#contentPicker_unsupportedRemove',
+			content: '#defaultdialogs_confirmSure',
+			confirmLabel: '#actions_remove',
+		});
+
+		this.value = undefined;
+		this._invalidData = undefined;
+		this.dispatchEvent(new UmbChangeEvent());
+	}
+
+	override render() {
+		return when(
+			!this._invalidData?.length,
+			() => html`${this.#renderItems()}${this.#renderAddButton()}`,
+			() => html`${this.#renderInvalidData()}`,
+		);
+	}
+
 	#renderAddButton() {
-		if (this.max === 1 && this.selection.length >= this.max) return;
+		if (this.max === 1 && (this._items?.length ?? 0) >= this.max) return;
 		return html`
 			<uui-button
 				id="btn-add"
@@ -137,11 +152,23 @@ export class UmbInputStaticFileElement extends UmbFormControlMixin<string | unde
 		`;
 	}
 
-	private _renderItem(item: UmbStaticFileItemModel) {
-		if (!item.unique) return;
+	#renderItems() {
+		if (!this._items) return nothing;
+		return html`
+			<uui-ref-list>
+				${repeat(
+					this._items,
+					(item) => item.unique,
+					(item) => this.#renderItem(item),
+				)}
+			</uui-ref-list>
+		`;
+	}
+
+	#renderItem(item: UmbStaticFileItemModel) {
+		if (!item.unique) return nothing;
 		return html`
 			<uui-ref-node name=${item.name} .detail=${this.#serializer.toServerPath(item.unique) || ''}>
-				<!-- TODO: implement is trashed, if we cant retrieve the item on the server (but only ask the server if we need to anyway...). <uui-tag size="s" slot="tag" color="danger">Trashed</uui-tag> -->
 				<uui-action-bar slot="actions">
 					<uui-button
 						label=${this.localize.term('general_remove')}
@@ -151,10 +178,47 @@ export class UmbInputStaticFileElement extends UmbFormControlMixin<string | unde
 		`;
 	}
 
+	#renderInvalidData() {
+		if (!this._invalidData?.length) return nothing;
+		return html`
+			<div id="messages">
+				${repeat(
+					this._invalidData,
+					(item) => item,
+					(item) => html`
+						<p>
+							<umb-localize key="contentPicker_unsupportedHeadline">
+								<strong>Unsupported content items</strong><br />
+								The following content is no longer supported in this editor.
+							</umb-localize>
+						</p>
+						<ul>
+							<li>${this.#serializer.toServerPath(item)}</li>
+						</ul>
+						<p>
+							<umb-localize key="contentPicker_unsupportedMessage">
+								If you still require this content, please contact your administrator. Otherwise you can remove it.
+							</umb-localize>
+						</p>
+						<uui-button
+							color="danger"
+							look="outline"
+							label=${this.localize.term('contentPicker_unsupportedRemove')}
+							@click=${this.#onRemoveInvalidData}></uui-button>
+					`,
+				)}
+			</div>
+		`;
+	}
+
 	static override styles = [
 		css`
 			#btn-add {
 				width: 100%;
+			}
+
+			#messages {
+				color: var(--uui-color-danger-standalone);
 			}
 		`,
 	];
